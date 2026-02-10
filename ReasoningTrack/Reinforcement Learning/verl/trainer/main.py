@@ -127,7 +127,8 @@ def main():
                 "RAY_DEBUG": "1",
             }
         }
-        ray.init(runtime_env=runtime_env,_temp_dir="/wangx_nas/JLY/raylog")
+        ray.init(runtime_env=runtime_env)
+        # ray.init(runtime_env=runtime_env,_temp_dir="/wangx_nas/JLY/raylog")
         # debug.init()
 
     runner = Runner.remote()

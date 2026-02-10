@@ -540,7 +540,16 @@ class RayPPOTrainer:
                     # recompute old_log_probs
                     with timer("old", timing_raw):
                         old_log_probs = self.actor_rollout_wg.compute_log_probs(batch)
+                        # # === 【修复】解锁 TensorDict，防止 Ray 对象只读报错 ===
+                        # if hasattr(batch.batch, 'clone'):
+                        #     batch.batch = batch.batch.clone()
+                        # # ==================================================
+                        # 【修复】只解锁 TensorDict 的写入权限，不复制数据，节省内存
+                        if hasattr(batch.batch, 'unlock_'):
+                            batch.batch.unlock_()
+                        # # ==================================================
                         batch = batch.union(old_log_probs)
+                        # batch = batch.union(old_log_probs)
 
                     # compute ref_log_probs
                     if self.use_reference_policy:

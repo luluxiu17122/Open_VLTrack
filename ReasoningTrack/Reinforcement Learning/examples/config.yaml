@@ -47,6 +47,7 @@ worker:
       enable_cpu_offload: false
       enable_rank0_init: true
       torch_dtype: bf16
+      use_orig_params: True  # <--- 【核心修复】这里必须是 True
     offload:
       offload_params: true  # true: more CPU memory; false: more GPU memory
       offload_optimizer: true  # true: more CPU memory; false: more GPU memory
@@ -69,12 +70,14 @@ worker:
       enable_full_shard: true
       enable_cpu_offload: true  # true: more CPU memory; false: more GPU memory
       enable_rank0_init: true
+      use_orig_params: True  # <--- 【核心修复】这里必须是 True
     offload:
       offload_params: false
 
   reward:
     reward_type: batch
     reward_function: ./examples/reward_function/track.py:compute_score_batch
+#    num_gpus: 0.2
 
 trainer:
   total_epochs: 2
@@ -84,11 +87,11 @@ trainer:
   logger: ["console", "wandb"]
   nnodes: 1
   n_gpus_per_node: 8
-  val_freq: 5  # -1 to disable
+  val_freq: 1 #5  # -1 to disable
   val_before_train: true
   val_only: false
   val_generations_to_log: 3
   save_freq: 10  # -1 to disable
   save_limit: 4  # -1 to disable
-  save_checkpoint_path: /wangx_nas/JLY/Code/LongTimeTracking/RLModels/easyr1/FULL_ioubf16_sft372_removeioureward
+  save_checkpoint_path: /zssd/tyy/projects/Open_VLTrack/ReasoningTrack/checkpoints/qwen2_5_vl_grpo_v1
   load_checkpoint_path: 

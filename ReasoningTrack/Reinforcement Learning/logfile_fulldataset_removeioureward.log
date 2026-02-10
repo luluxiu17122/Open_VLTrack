@@ -1,0 +1,39 @@
++ export PYTHONUNBUFFERED=1
++ PYTHONUNBUFFERED=1
++ MODEL_PATH=/zhdd/dataset/tyy/VOT/tyy_storage/LLM/output/Qwen2.5-VL-3B-Instruct/full/train_full/checkpoint-126
++ DATA_DIR=/zhdd/dataset/tyy/VOT/tyy_storage/LLM/RL/RLFullDataset
++ CUDA_VISIBLE_DEVICES=1,3,4
++ nohup python3 -m verl.trainer.main config=examples/config.yaml data.train_files=/zhdd/dataset/tyy/VOT/tyy_storage/LLM/RL/RLFullDataset/train data.val_files=/zhdd/dataset/tyy/VOT/tyy_storage/LLM/RL/RLFullDataset/test data.rollout_batch_size=252 ' '
+Traceback (most recent call last):
+  File "/ssd/tyy/anaconda3/envs/EasyR1/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/ssd/tyy/anaconda3/envs/EasyR1/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/zssd/tyy/projects/Open_VLTrack/ReasoningTrack/Reinforcement Learning/verl/trainer/main.py", line 22, in <module>
+    from ..utils.tokenizer import get_processor, get_tokenizer
+  File "/zssd/tyy/projects/Open_VLTrack/ReasoningTrack/Reinforcement Learning/verl/utils/tokenizer.py", line 18, in <module>
+    from transformers import AutoProcessor, AutoTokenizer, PreTrainedTokenizer, ProcessorMixin
+  File "/ssd/tyy/anaconda3/envs/EasyR1/lib/python3.10/site-packages/transformers/utils/import_utils.py", line 2276, in __getattr__
+    module = self._get_module(self._class_to_module[name])
+  File "/ssd/tyy/anaconda3/envs/EasyR1/lib/python3.10/site-packages/transformers/utils/import_utils.py", line 2306, in _get_module
+    raise e
+  File "/ssd/tyy/anaconda3/envs/EasyR1/lib/python3.10/site-packages/transformers/utils/import_utils.py", line 2304, in _get_module
+    return importlib.import_module("." + module_name, self.__name__)
+  File "/ssd/tyy/anaconda3/envs/EasyR1/lib/python3.10/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+  File "/ssd/tyy/anaconda3/envs/EasyR1/lib/python3.10/site-packages/transformers/models/auto/processing_auto.py", line 28, in <module>
+    from ...processing_utils import ProcessorMixin
+  File "/ssd/tyy/anaconda3/envs/EasyR1/lib/python3.10/site-packages/transformers/processing_utils.py", line 74, in <module>
+    from .modeling_utils import PreTrainedAudioTokenizerBase
+  File "/ssd/tyy/anaconda3/envs/EasyR1/lib/python3.10/site-packages/transformers/modeling_utils.py", line 61, in <module>
+    from .integrations.flash_paged import paged_attention_forward
+  File "/ssd/tyy/anaconda3/envs/EasyR1/lib/python3.10/site-packages/transformers/integrations/flash_paged.py", line 8, in <module>
+    from flash_attn import flash_attn_varlen_func  # noqa: F401
+  File "/ssd/tyy/anaconda3/envs/EasyR1/lib/python3.10/site-packages/flash_attn/__init__.py", line 3, in <module>
+    from flash_attn.flash_attn_interface import (
+  File "/ssd/tyy/anaconda3/envs/EasyR1/lib/python3.10/site-packages/flash_attn/flash_attn_interface.py", line 15, in <module>
+    import flash_attn_2_cuda as flash_attn_gpu
+ImportError: /ssd/tyy/anaconda3/envs/EasyR1/lib/python3.10/site-packages/flash_attn_2_cuda.cpython-310-x86_64-linux-gnu.so: undefined symbol: _ZN3c105ErrorC2ENS_14SourceLocationENSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE
++ worker.actor.model.model_path=/zhdd/dataset/tyy/VOT/tyy_storage/LLM/output/Qwen2.5-VL-3B-Instruct/full/train_full/checkpoint-126 worker.rollout.tensor_parallel_size=1 worker.actor.optim.strategy=adamw_bf16 worker.rollout.limit_images=2 trainer.experiment_name=qwen2_5_vl_3b_tnllt_grpo trainer.n_gpus_per_node=3 ' '
+examples/aqwen2_5_vl_3b_fulldataset_grpo.sh: 行 33: worker.actor.model.model_path=/zhdd/dataset/tyy/VOT/tyy_storage/LLM/output/Qwen2.5-VL-3B-Instruct/full/train_full/checkpoint-126: 没有那个文件或目录
++ 'trainer.logger=[console,tensorboard]'

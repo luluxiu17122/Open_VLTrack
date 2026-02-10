@@ -23,8 +23,20 @@ def apply_ulysses_patch(model_type: str) -> None:
     if model_type in ("llama", "gemma", "gemma2", "mistral", "qwen2", "qwen3", "qwen3_moe"):
         ALL_ATTENTION_FUNCTIONS["flash_attention_2"] = flash_attention_forward
     elif model_type in ("qwen2_vl", "qwen2_5_vl"):
-        from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VLFlashAttention2
-        from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLFlashAttention2
+        # from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VLFlashAttention2
+        try:
+            # 尝试导入旧版类名（兼容低版本）
+            from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VLFlashAttention2
+        except ImportError:
+            # 如果报错（高版本），则导入通用的 Attention 类并作为替身
+            from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VLAttention as Qwen2_5_VLFlashAttention2
+        # from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLFlashAttention2
+        try:
+            # 尝试导入旧版类名（兼容低版本）
+            from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLFlashAttention2
+        except ImportError:
+            # 高版本：导入通用的 Attention 类并起别名
+            from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLAttention as Qwen2VLFlashAttention2
 
         Qwen2VLFlashAttention2.forward = qwen2_vl_attn_forward
         Qwen2_5_VLFlashAttention2.forward = qwen2_vl_attn_forward

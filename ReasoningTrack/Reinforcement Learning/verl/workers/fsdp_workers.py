@@ -203,14 +203,29 @@ class FSDPWorker(Worker):
                 low_cpu_mem_usage=True,
                 trust_remote_code=model_config.trust_remote_code,
             )
+        # else:
+        #     with no_init_weights(), init_empty_weights():
+        #         model = auto_class.from_config(
+        #             self.model_config,
+        #             torch_dtype=torch_dtype,
+        #             attn_implementation="flash_attention_2",
+        #             trust_remote_code=model_config.trust_remote_code,
+        #         )
         else:
+            # === 修改开始：手动将参数注入 config ===
+            self.model_config.torch_dtype = torch_dtype
+            self.model_config._attn_implementation = "flash_attention_2"
+
             with no_init_weights(), init_empty_weights():
                 model = auto_class.from_config(
-                    self.model_config,
-                    torch_dtype=torch_dtype,
-                    attn_implementation="flash_attention_2",
-                    trust_remote_code=model_config.trust_remote_code,
+                    self.model_config
+                    # 删除了报错的 torch_dtype 和 attn_implementation 参数
+                    # trust_remote_code=model_config.trust_remote_code,
                 )
+
+            # 双重保险：确保模型精度正确
+            model.to(torch_dtype)
+            # === 修改结束 ===
 
         assert isinstance(model, PreTrainedModel)  # lint
         model.tie_weights()  # avoid hanging

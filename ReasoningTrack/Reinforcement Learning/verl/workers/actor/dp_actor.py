@@ -24,7 +24,13 @@ from einops import rearrange
 from ray.experimental.tqdm_ray import tqdm
 from torch import nn
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-from transformers.modeling_flash_attention_utils import index_first_axis, pad_input, unpad_input
+# from transformers.modeling_flash_attention_utils import index_first_axis, pad_input, unpad_input
+try:
+    # 尝试从 transformers 导入 (旧版兼容)
+    from transformers.modeling_flash_attention_utils import index_first_axis, pad_input, unpad_input
+except ImportError:
+    # 如果 transformers 里没了 (新版)，直接从 flash_attn 导入
+    from flash_attn.bert_padding import index_first_axis, pad_input, unpad_input
 
 from ...protocol import DataProto
 from ...trainer import core_algos
