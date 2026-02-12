@@ -45,6 +45,7 @@ from ..workers.reward import FunctionRewardManager
 from . import core_algos
 from .config import PPOConfig
 from .metrics import compute_data_metrics, compute_throughout_metrics, compute_timing_metrics, reduce_metrics
+import gc
 
 
 
@@ -273,16 +274,52 @@ class RayPPOTrainer:
         self.logger.log_generation(samples, self.global_step)
 
     def _validate(self) -> Dict[str, Any]:
-        reward_tensor_lst = []
-        # Lists to collect samples for the table
-        sample_inputs, sample_outputs, sample_labels, sample_scores = [], [], [], []
-        reward_metrics_lst = defaultdict(list)
-        for batch_dict in self.val_dataloader:
+        # ==========================================
+        # 0. 内存大扫除 (保留你原本的逻辑)
+        # ==========================================
+        import gc
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            try:
+                torch.cuda.ipc_collect()
+            except:
+                pass
+
+        # ==========================================
+        # 1. 定义累加器 (Stream Accumulators)
+        # ==========================================
+        # 不再存巨大的 list，只存 float 总和
+        val_reward_sum = 0.0  # 总分
+        val_count = 0  # 总样本数
+
+        # 用于存 log 的样本，只存一点点
+        log_inputs, log_outputs, log_labels, log_scores = [], [], [], []
+
+        # 限制验证集只跑多少个 Batch (防止 OOM 的核心!)
+        # 假设 batch=128, 跑 30 个 batch 就是 3840 条数据，足够看趋势了
+        MAX_VAL_BATCHES = 30
+
+        # 辅助指标的累加器
+        reward_metrics_accum = defaultdict(float)
+        reward_metrics_counts = defaultdict(int)
+
+        # ==========================================
+        # 2. 循环验证
+        # ==========================================
+        print(f"[Validation] Starting validation (Max batches: {MAX_VAL_BATCHES})...")
+
+        for i, batch_dict in enumerate(self.val_dataloader):
+            # 【核心修改 1】强制刹车机制
+            if i >= MAX_VAL_BATCHES:
+                print(f"[Validation] Early stopping at batch {i} to save memory.")
+                break
+
+            # --- 下面是原本的数据处理逻辑 (保持不变) ---
             test_batch = DataProto.from_single_dict(batch_dict)
-            # Store original inputs
-            input_ids = test_batch.batch["input_ids"]
-            input_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
-            sample_inputs.extend(input_texts)
+
+            # 【核心修改 2】只有第一个 Batch 才解码文本 (省下巨量 CPU 内存)
+            need_to_log = (len(log_inputs) < 10)  # 比如只存前 10 条样本用于展示
 
             if "multi_modal_data" in test_batch.non_tensor_batch.keys():
                 test_gen_batch = test_batch.pop(
@@ -297,31 +334,142 @@ class RayPPOTrainer:
 
             test_gen_batch.meta_info = self.config.worker.rollout.val_override_config
             test_gen_batch, pad_size = pad_dataproto_to_divisor(test_gen_batch, self.actor_rollout_wg.world_size)
+
+            # 生成
             test_output_gen_batch = self.actor_rollout_wg.generate_sequences(test_gen_batch)
             test_output_gen_batch = unpad_dataproto(test_output_gen_batch, pad_size=pad_size)
 
-            # Store generated outputs
-            output_ids = test_output_gen_batch.batch["responses"]
-            output_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
-            sample_outputs.extend(output_texts)
-            sample_labels.extend(test_batch.non_tensor_batch["ground_truth"].tolist())
+            # 计算 Reward
             test_batch = test_batch.union(test_output_gen_batch)
-
-            # evaluate using reward_function
             reward_tensor, reward_metrics = ray.get(self.val_reward_fn.compute_reward.remote(test_batch))
 
-            # Store scores
-            scores = reward_tensor.sum(-1).cpu().tolist()
-            sample_scores.extend(scores)
+            # --- 结果处理 (显存优化版) ---
 
-            reward_tensor_lst.append(reward_tensor)
+            # 1. 累加总分 (转成 float 存，别存 tensor)
+            # sum(-1) 是对 sequence 求和，再 sum() 是对 batch 求和
+            batch_score_sum = reward_tensor.sum(-1).sum().item()
+            batch_size = reward_tensor.shape[0]
+
+            val_reward_sum += batch_score_sum
+            val_count += batch_size
+
+            # 2. 累加辅助指标
             for key, value in reward_metrics.items():
-                reward_metrics_lst[key].extend(value)
+                # value 假设是一个 list 或 tensor
+                if isinstance(value, list):
+                    reward_metrics_accum[key] += sum(value)
+                    reward_metrics_counts[key] += len(value)
+                elif isinstance(value, torch.Tensor):
+                    reward_metrics_accum[key] += value.sum().item()
+                    reward_metrics_counts[key] += value.numel()
 
-        self._maybe_log_val_generations(sample_inputs, sample_outputs, sample_labels, sample_scores)
-        reward_score = torch.cat(reward_tensor_lst, dim=0).sum(-1).mean().item()
-        val_reward_metrics = {f"val/{key}_reward": value for key, value in reduce_metrics(reward_metrics_lst).items()}
-        return {"val/reward_score": reward_score, **val_reward_metrics}
+            # 3. 只有在这个 Batch 需要被 Log 时，才去解码字符串 (极度节省内存)
+            if need_to_log:
+                # 重新拿回 input_ids (之前 pop 掉了，这里如果有需要得小心，或者直接从 batch_dict 取)
+                # 为了安全，我们直接解码 batch_dict 里的原始数据
+                input_ids = batch_dict["input_ids"]
+                # 简单的解码逻辑
+                batch_inputs = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
+
+                output_ids = test_output_gen_batch.batch["responses"]
+                batch_outputs = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
+
+                batch_scores = reward_tensor.sum(-1).cpu().tolist()
+                batch_labels = test_batch.non_tensor_batch["ground_truth"].tolist()
+
+                log_inputs.extend(batch_inputs)
+                log_outputs.extend(batch_outputs)
+                log_labels.extend(batch_labels)
+                log_scores.extend(batch_scores)
+
+            # 【核心修改 3】手动删除重型对象，防止 Ray 引用计数不释放
+            del test_batch, test_gen_batch, test_output_gen_batch, reward_tensor
+            # (可选) 再次清理
+            # torch.cuda.empty_cache()
+
+        # ==========================================
+        # 3. 计算最终平均分
+        # ==========================================
+        # 记录 log (只用那几个采样样本)
+        self._maybe_log_val_generations(log_inputs, log_outputs, log_labels, log_scores)
+
+        # 计算平均分 = 总分 / 总数
+        mean_reward_score = val_reward_sum / val_count if val_count > 0 else 0.0
+
+        # 计算辅助指标的平均分
+        val_reward_metrics = {}
+        for key in reward_metrics_accum:
+            count = reward_metrics_counts[key]
+            val_reward_metrics[f"val/{key}_reward"] = reward_metrics_accum[key] / count if count > 0 else 0.0
+
+        return {"val/reward_score": mean_reward_score, **val_reward_metrics}
+
+    # def _validate(self) -> Dict[str, Any]:
+    #     #####在开始验证前，强制清理训练阶段残留的内存碎片和缓存
+    #
+    #
+    #     # 1. 强制 Python 垃圾回收
+    #     gc.collect()
+    #
+    #     # 2. 清空 PyTorch 显存缓存 (这对 Ray 共享显存非常重要)
+    #     torch.cuda.empty_cache()
+    #
+    #     # 3. 清理多进程 IPC 句柄 (针对多卡环境)
+    #     if torch.cuda.is_available():
+    #         try:
+    #             torch.cuda.ipc_collect()
+    #         except:
+    #             pass
+    #     #==========================================
+    #     reward_tensor_lst = []
+    #     # Lists to collect samples for the table
+    #     sample_inputs, sample_outputs, sample_labels, sample_scores = [], [], [], []
+    #     reward_metrics_lst = defaultdict(list)
+    #     for batch_dict in self.val_dataloader:
+    #         test_batch = DataProto.from_single_dict(batch_dict)
+    #         # Store original inputs
+    #         input_ids = test_batch.batch["input_ids"]
+    #         input_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
+    #         sample_inputs.extend(input_texts)
+    #
+    #         if "multi_modal_data" in test_batch.non_tensor_batch.keys():
+    #             test_gen_batch = test_batch.pop(
+    #                 batch_keys=["input_ids", "attention_mask", "position_ids"],
+    #                 non_tensor_batch_keys=["raw_prompt_ids", "multi_modal_data"],
+    #             )
+    #         else:
+    #             test_gen_batch = test_batch.pop(
+    #                 batch_keys=["input_ids", "attention_mask", "position_ids"],
+    #                 non_tensor_batch_keys=["raw_prompt_ids"],
+    #             )
+    #
+    #         test_gen_batch.meta_info = self.config.worker.rollout.val_override_config
+    #         test_gen_batch, pad_size = pad_dataproto_to_divisor(test_gen_batch, self.actor_rollout_wg.world_size)
+    #         test_output_gen_batch = self.actor_rollout_wg.generate_sequences(test_gen_batch)
+    #         test_output_gen_batch = unpad_dataproto(test_output_gen_batch, pad_size=pad_size)
+    #
+    #         # Store generated outputs
+    #         output_ids = test_output_gen_batch.batch["responses"]
+    #         output_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
+    #         sample_outputs.extend(output_texts)
+    #         sample_labels.extend(test_batch.non_tensor_batch["ground_truth"].tolist())
+    #         test_batch = test_batch.union(test_output_gen_batch)
+    #
+    #         # evaluate using reward_function
+    #         reward_tensor, reward_metrics = ray.get(self.val_reward_fn.compute_reward.remote(test_batch))
+    #
+    #         # Store scores
+    #         scores = reward_tensor.sum(-1).cpu().tolist()
+    #         sample_scores.extend(scores)
+    #
+    #         reward_tensor_lst.append(reward_tensor)
+    #         for key, value in reward_metrics.items():
+    #             reward_metrics_lst[key].extend(value)
+    #
+    #     self._maybe_log_val_generations(sample_inputs, sample_outputs, sample_labels, sample_scores)
+    #     reward_score = torch.cat(reward_tensor_lst, dim=0).sum(-1).mean().item()
+    #     val_reward_metrics = {f"val/{key}_reward": value for key, value in reduce_metrics(reward_metrics_lst).items()}
+    #     return {"val/reward_score": reward_score, **val_reward_metrics}
 
     def init_workers(self) -> None:
         # breakpoint()

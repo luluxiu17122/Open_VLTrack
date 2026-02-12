@@ -102,9 +102,9 @@ def reward_strict_format_dtagreward(predict: str) -> float:
     return 1
 
 import sys
-tracker_path = "/zssd/tyy/projects/DUTrack"  # 替换为 tracker.py 所在的实际路径
+tracker_path = "/zssd/tyy/projects/DUTrack"
 sys.path.append(tracker_path)
-from demo3 import track_and_visualize, batch_track_and_visualize
+from demo_dutrack import track_and_visualize, batch_track_and_visualize
 sys.path.append(tracker_path)
 
 

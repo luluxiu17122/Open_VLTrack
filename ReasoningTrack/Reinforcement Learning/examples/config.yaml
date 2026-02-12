@@ -8,7 +8,8 @@ data:
   max_response_length: 2048
   rollout_batch_size: 512
   # rollout_batch_size: 64
-  val_batch_size: 1024
+#  val_batch_size: 1024
+  val_batch_size: 128
   format_prompt: ./examples/format_prompt/LTracking_format.jinja
   override_chat_template: null
   shuffle: true
@@ -27,7 +28,7 @@ algorithm:
 worker:
   actor:
     global_batch_size: 128
-    micro_batch_size_per_device_for_update: 4
+    micro_batch_size_per_device_for_update: 8 #4
     micro_batch_size_per_device_for_experience: 16
     max_grad_norm: 1.0
     padding_free: true
@@ -49,9 +50,8 @@ worker:
       torch_dtype: bf16
       use_orig_params: True  # <--- 【核心修复】这里必须是 True
     offload:
-      offload_params: true  # true: more CPU memory; false: more GPU memory
-      offload_optimizer: true  # true: more CPU memory; false: more GPU memory
-
+      offload_params: false #true  # true: more CPU memory; false: more GPU memory
+      offload_optimizer: false #true  # true: more CPU memory; false: more GPU memory
   rollout:
     n: 5
     temperature: 1.0
@@ -64,6 +64,8 @@ worker:
     val_override_config:
       temperature: 0.5
       n: 1
+      # 这样验证时内存占用减半，而且验证集通常不需要写特别长的 CoT
+      max_tokens: 1024
 
   ref:
     fsdp:
@@ -77,21 +79,20 @@ worker:
   reward:
     reward_type: batch
     reward_function: ./examples/reward_function/track.py:compute_score_batch
-#    num_gpus: 0.2
 
 trainer:
   total_epochs: 2
   max_steps: null
   project_name: easy_r1
   experiment_name: qwen2_5_7b_math_grpo
-  logger: ["console", "wandb"]
+  logger: ["console", "wandb", "tensorboard"]
   nnodes: 1
   n_gpus_per_node: 8
-  val_freq: 1 #5  # -1 to disable
+  val_freq: 5 #5  # -1 to disable
   val_before_train: true
   val_only: false
   val_generations_to_log: 3
   save_freq: 10  # -1 to disable
   save_limit: 4  # -1 to disable
   save_checkpoint_path: /zssd/tyy/projects/Open_VLTrack/ReasoningTrack/checkpoints/qwen2_5_vl_grpo_v1
-  load_checkpoint_path: 
+  load_checkpoint_path:
