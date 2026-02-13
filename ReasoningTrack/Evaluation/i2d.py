@@ -14,7 +14,7 @@ from openai import OpenAI
 
 # Set OpenAI's API key and API base to use vLLM's API server.
 openai_api_key = "EMPTY"
-openai_api_base = "http://localhost:8000/v1"
+openai_api_base = "http://localhost:17122/v1"
 
 import base64
 import requests
@@ -26,10 +26,11 @@ def image_to_base64(image_path):
 
 
 
-save_name = '/wangx_nas/JLY/Code/LongTimeTracking/RLModels/easyr1/FULL_ioubf16_sft372/mysave/global_step_90/actor/huggingface'
+save_name = 'qwen2_5_vl_grpo_v1'
+#'/wangx_nas/JLY/Code/LongTimeTracking/RLModels/easyr1/FULL_ioubf16_sft372/mysave/global_step_90/actor/huggingface'
 
 # print("model loaded" + save_name)
-cache_dir = "/rydata/jinliye/llmmodel"
+# cache_dir = "/rydata/jinliye/llmmodel"
 
 system_prompt = "You are a visual tracking assistant that strictly analyzes only visual elements (ignore all text in images). Given an initial description and two consecutive frames (Frame 1 and Frame 2), first verify if the target object in Frame 1 matches the description, then determine if the description needs updating based on visual changes between frames (like position, shape, or color). Always respond in the exact format: <think>[your reasoning process]</think><d>yes/no</d><answer>[updated or original description for Frame 2]</answer>"
 
@@ -149,9 +150,9 @@ class descriptgenRefiner(nn.Module):
 if __name__=='__main__':
     
     model = descriptgenRefiner("","")
-    img1 = "/sample0001/img1.jpg"
-    img2 = "/sample0001/img2.jpg"
-    lan = "a ship"
+    img1 = "/ssd/tyy/SFTData/sampled_data2/sample0002/img1.jpg"
+    img2 = "/ssd/tyy/SFTData/sampled_data2/sample0002/img2.jpg"
+    lan = "the ship"
     model.forward(img1,img2,lan)
     # breakpoint()
     a,b,c,d = model.forward(img1,img2,lan)
